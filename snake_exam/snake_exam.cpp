@@ -121,7 +121,7 @@ int main()
 		}
 
 		// вычисляем новую позицию головы
-		COORD new_head = snake_body[0];
+		COORD new_head = snake_body[0]; // новая позиция головы
 		if (move_left) new_head.X--;
 		else if (move_right) new_head.X++;
 		else if (move_up) new_head.Y--;
@@ -168,7 +168,7 @@ int main()
 
 		// Сдвигаем тело змейки
 		for (int i = snake_length; i > 0; --i) {
-			snake_body[i] = snake_body[i - 1];
+			snake_body[i] = snake_body[i - 1]; 
 		}
 		snake_body[0] = new_head;
 
