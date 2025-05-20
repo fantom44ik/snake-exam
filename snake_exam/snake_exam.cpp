@@ -1,6 +1,8 @@
 ﻿#include <iostream>
 #include "Snake_lib.h"
 
+using namespace std;
+
 int main()
 {
 	// проверка на то начата ли игра
@@ -15,7 +17,6 @@ int main()
 	// вывод меню
 	show_menu(game_started);
 
-
 	HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
 	system("title Snakek Game"); // изменение заголовка консоли
 
@@ -29,14 +30,14 @@ int main()
 	SetCurrentConsoleFontEx(h, 0, &font);
 
 	// скрытие курсора
-    CONSOLE_CURSOR_INFO cursor;
-    cursor.bVisible = false;
-    cursor.dwSize = 100;
-    SetConsoleCursorInfo(h, &cursor);
+	CONSOLE_CURSOR_INFO cursor;
+	cursor.bVisible = false;
+	cursor.dwSize = 100;
+	SetConsoleCursorInfo(h, &cursor);
 
 	// размер поля игры
-    int height = 21;
-    int width = 51;
+	int height = 21;
+	int width = 51;
 
 	// счётчик съеденных яблок
 	int apples_count = 0;
@@ -47,17 +48,20 @@ int main()
 		map[i] = new int[width];
 
 	// заполнение массива стенами и полем
-    fill_2d_array(map, height, width);
+	fill_2d_array(map, height, width);
 	// вывод массива на экран
 	print_2d_array(map, height, width, h);
 
+	// массив для хранения сегментов змейки
+	COORD snake_body[1000]; // максимум 1000 сегментов
+	int snake_length = 1;
+	snake_body[0].X = width / 2;
+	snake_body[0].Y = height / 2;
+
 	// отображение змейки и начального яблока
-	COORD snake;
-	snake.X = width / 2;
-	snake.Y = height / 2;
-	spawn_apple(map, width, height, snake);
-	map[snake.Y][snake.X] = HALL;
-	SetConsoleCursorPosition(h, snake);
+	spawn_apple(map, width, height, snake_body[0]);
+	map[snake_body[0].Y][snake_body[0].X] = HALL;
+	SetConsoleCursorPosition(h, snake_body[0]);
 	SetConsoleTextAttribute(h, Color::BLUE);
 	cout << "H";
 
@@ -113,16 +117,31 @@ int main()
 			}
 
 			// обновление направления движения
-			update_direction_from_key(code, move_left, move_right, move_up, move_down); 
+			update_direction_from_key(code, move_left, move_right, move_up, move_down);
 		}
 
-		COORD old_position = snake; // сохранение старой позиции змейки
-		bool has_been_moved = false; // переменная для проверки была ли изменена позиция змейки
+		// вычисляем новую позицию головы
+		COORD new_head = snake_body[0];
+		if (move_left) new_head.X--;
+		else if (move_right) new_head.X++;
+		else if (move_up) new_head.Y--;
+		else if (move_down) new_head.Y++;
 
-		// движение змейки
-		bool alive = snake_move(map, width, height, has_been_moved, move_left, move_right, move_up, move_down, snake); 
+		// Проверка на столкновение со стеной
+		bool alive = true;
+		if (new_head.X < 0 || new_head.X >= width || new_head.Y < 0 || new_head.Y >= height ||
+			map[new_head.Y][new_head.X] == GameObject::WALL) {
+			alive = false;
+		}
 
-		// проверка на то не врезалась ли змейка в стену
+		// Проверка на столкновение с телом
+		for (int i = 1; i < snake_length; ++i) {
+			if (snake_body[i].X == new_head.X && snake_body[i].Y == new_head.Y) {
+				alive = false;
+				break;
+			}
+		}
+
 		if (!alive) {
 			system("cls");
 			SetConsoleTextAttribute(h, Color::RED);
@@ -144,22 +163,21 @@ int main()
 			system("cls");
 			game_started = false; // завершение игры
 			show_menu(game_started); // возвращение в меню
+			break;
 		}
 
-		// проверка на то не врезалась ли змейка сама в себя
-		if (has_been_moved) {
-			SetConsoleCursorPosition(h, old_position);
-			SetConsoleTextAttribute(h, Color::BLACK);
-			cout << " ";
-			SetConsoleCursorPosition(h, snake);
-			SetConsoleTextAttribute(h, Color::BLUE);
-			cout << "H";
+		// Сдвигаем тело змейки
+		for (int i = snake_length; i > 0; --i) {
+			snake_body[i] = snake_body[i - 1];
 		}
+		snake_body[0] = new_head;
 
-		// проверка на то не съела ли змейка яблоко
-		if (map[snake.Y][snake.X] == GameObject::APPLE) {
+		// Проверка на яблоко
+		bool ate_apple = (map[new_head.Y][new_head.X] == GameObject::APPLE);
+		if (ate_apple) {
 			apples_count++;
-			map[snake.Y][snake.X] = GameObject::HALL;
+			snake_length++;
+			map[new_head.Y][new_head.X] = GameObject::HALL;
 			COORD apples_info;
 			apples_info.X = width + 1;
 			apples_info.Y = 5;
@@ -168,9 +186,26 @@ int main()
 			cout << "APPLES: ";
 			SetConsoleTextAttribute(h, Color::RED);
 			cout << apples_count << "  ";
-
-			spawn_apple(map, width, height, snake);
+			spawn_apple(map, width, height, snake_body[0]);
 		}
+		else {
+			// Стираем хвост
+			SetConsoleCursorPosition(h, snake_body[snake_length]);
+			SetConsoleTextAttribute(h, Color::BLACK);
+			cout << " ";
+		}
+
+		// Рисуем голову
+		SetConsoleCursorPosition(h, snake_body[0]);
+		SetConsoleTextAttribute(h, Color::BLUE);
+		cout << "H";
+		// Рисуем тело (опционально, можно другим цветом)
+		SetConsoleTextAttribute(h, Color::BLUE);
+		for (int i = 1; i < snake_length; ++i) {
+			SetConsoleCursorPosition(h, snake_body[i]);
+			cout << "o";
+		}
+
 		// скорость игры
 		Sleep(200);
 	}
@@ -313,34 +348,6 @@ void update_direction_from_key(int code, bool& move_left, bool& move_right, bool
 		move_down = true;
 		move_up = move_left = move_right = false;
 	}
-}
-bool snake_move(int**& ar, int width, int height, bool& has_been_moved,
-	bool move_left, bool move_right, bool move_up, bool move_down, COORD& snake) {
-	// движение змейки 
-
-	// рассчёт координаты следующего движения
-	int nextX = snake.X;
-	int nextY = snake.Y;
-
-	// проверка на то, в какую сторону движется змейка
-	if (move_left) nextX--;
-	else if (move_right) nextX++;
-	else if (move_up) nextY--;
-	else if (move_down) nextY++;
-
-	// проверка на то, не вышла ли змейка за границы поля
-	if (nextX < 0 || nextX >= width || nextY < 0 || nextY >= height)
-		return false;
-
-	// проверка на то, не врезалась ли змейка в стену
-	if (ar[nextY][nextX] == GameObject::WALL)
-		return false;
-
-	// проверка на то, не врезалась ли змейка сама в себя
-	snake.X = nextX;
-	snake.Y = nextY;
-	has_been_moved = true;
-	return true;
 }
 void spawn_apple(int** ar, int width, int height, const COORD& snake) {
 	// создание яблока в случайной позиции
