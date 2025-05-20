@@ -1,254 +1,5 @@
 ﻿#include <iostream>
-#include <windows.h>
-#include <conio.h>
-#include <string>
-using namespace std;
-
-// перечисления для стен, яблок и цветов
-enum GameObject : short { HALL, WALL, APPLE };
-enum Color { BLACK = 1, DARKGREEN = 2, YELLOW = 14, RED = 12, BLUE = 9, WHITE = 15, DARKYELLOW = 6, DARKRED = 4 };
-enum Key { ENTER = 13, ESCAPE = 27, SPACE = 32, W = 119, A = 97, S = 115, D = 100, LEFT = 75, RIGHT = 77, UP = 72, DOWN = 80, BACKSPACE = 8};
-
-// прототипы функций
-void show_menu(bool& game_started);
-void fill_2d_array(int** ar, int width, int height);
-void print_2d_array(int** ar, int width, int height, HANDLE h);
-void clear_2d_array(int**& ar, int width);
-void update_direction_from_key(int code, bool& move_left, bool& move_right, bool& move_up, bool& move_down);
-bool snake_move(int**& ar, int width, int height, bool& has_been_moved,
-	bool move_left, bool move_right, bool move_up, bool move_down, COORD& snake);
-void spawn_apple(int** ar, int width, int height, const COORD& snake);
-void save_score_to_file(int score);
-void print_scores_from_file();
-void clear_scores_file();
-
-
-void show_menu(bool& game_started) {
-	int choice; // переменная для выбора пункта меню
-
-	HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
-	system("title Snakek Menu"); // изменение заголовка консоли
-	CONSOLE_FONT_INFOEX font; // https://docs.microsoft.com/en-us/windows/console/console-font-infoex
-	font.cbSize = sizeof(font);
-	font.dwFontSize.Y = 25;
-	font.FontFamily = FF_DONTCARE;
-	font.FontWeight = FW_NORMAL;
-	wcscpy_s(font.FaceName, 9, L"Consolas");
-	SetCurrentConsoleFontEx(h, 0, &font);
-	SetConsoleTextAttribute(h, Color::WHITE);
-
-	do {
-		system("cls"); // очистка консоли
-		cout << "=====================\n";
-		cout << "  Welcome to snake!\n";
-		cout << "=====================\n";
-		cout << "1. Play\n";
-		cout << "2. Records\n";
-		cout << "3. Clear records\n";
-		cout << "4. Exit\n";
-		cout << "Choose an option: ";
-
-		cin >> choice;
-
-		// проверка на то, какой пункт меню был выбран
-		switch (choice) {
-		case 1:
-			// запускает игру заменой переменной game_started на true
-			cout << "Starting game...\n";
-			Sleep(1000);
-			system("cls");
-			game_started = true;
-			return; // выход из меню в игру
-		case 2:
-			// выводит результаты в консоль
-			system("cls");
-			print_scores_from_file(); // вывод результатов
-			Sleep(2000); // задержка 2 секунды
-			cout << "\n\nPress any key and you will be redirected to the main menu...\n";
-			_getch(); // ожидание нажатия клавиши
-			break; // возвращение в меню
-		case 3:
-			// очищает файл с результатами
-			system("cls");
-			int confirm;
-			cout << "Are you sure you want to clear the records? (1 - Yes, 0 - No): "; // подтверждение очистки файла
-			cin >> confirm;
-			if (confirm == 1) {
-				cout << "Clearing records...\n";
-				Sleep(1000);
-				clear_scores_file(); // очистка файла
-				cout << "Records cleared.\n";
-				Sleep(2000);
-			}
-			else {
-				cout << "Records not cleared.\n";
-				Sleep(2000);
-			}
-			break; // возвращение в меню
-		case 4:
-			cout << "Exiting game...\n";
-			Sleep(1000);
-			exit(0); // выход из программы
-		default:
-			// в том случае, если был введён некорректный пункт меню
-			cout << "Wrong choice. Try again.\n";
-			Sleep(2000);
-		}
-	} while (true); // бесконечный цикл, пока не выбрана команда "Exit"
-}
-void fill_2d_array(int** ar, int width, int height) {
-	// заполнение двумерного массива стенами и полем
-	for (int y = 0; y < width; ++y) {
-		for (int x = 0; x < height; ++x) {
-			if (y == 0 || y == width - 1 || x == 0 || x == height - 1) {
-				ar[y][x] = WALL;
-			}
-			else {
-				ar[y][x] = HALL;
-			}
-		}
-	}
-}
-void print_2d_array(int** ar, int width, int height, HANDLE h) {
-	// вывод двумерного массива на экран и задание цвета вместе с символом для стен
-	for (int y = 0; y < width; ++y) {
-		for (int x = 0; x < height; ++x) {
-			switch (ar[y][x]) {
-			case HALL:
-				cout << " ";
-				break;
-			case WALL:
-				SetConsoleTextAttribute(h, Color::WHITE);
-				cout << (char)178;
-				break;
-			case APPLE:
-				SetConsoleTextAttribute(h, Color::RED);
-				cout << "o";
-				break;
-			}
-		}
-		cout << "\n";
-	}
-}
-void clear_2d_array(int**& ar, int width) {
-	// освобождение памяти
-	for (int i = 0; i < width; ++i) {
-		delete[] ar[i];
-		ar[i] = nullptr;
-	}
-	delete[] ar;
-	ar = nullptr;
-}
-void update_direction_from_key(int code, bool& move_left, bool& move_right, bool& move_up, bool& move_down) {
-	// обновление направления движения в зависимости от нажатой клавиши
-	if ((code == Key::LEFT || code == Key::A) && !move_right) {
-		move_left = true;
-		move_right = move_up = move_down = false;
-	}
-	else if ((code == Key::RIGHT || code == Key::D) && !move_left) {
-		move_right = true;
-		move_left = move_up = move_down = false;
-	}
-	else if ((code == Key::UP || code == Key::W) && !move_down) {
-		move_up = true;
-		move_down = move_left = move_right = false;
-	}
-	else if ((code == Key::DOWN || code == Key::S) && !move_up) {
-		move_down = true;
-		move_up = move_left = move_right = false;
-	}
-}
-bool snake_move(int**& ar, int width, int height, bool& has_been_moved,
-	bool move_left, bool move_right, bool move_up, bool move_down, COORD& snake) {
-	// движение змейки 
-
-	// рассчёт координаты следующего движения
-	int nextX = snake.X;
-	int nextY = snake.Y; 
-
-	// проверка на то, в какую сторону движется змейка
-	if (move_left) nextX--;
-	else if (move_right) nextX++;
-	else if (move_up) nextY--;
-	else if (move_down) nextY++;
-	
-	// проверка на то, не вышла ли змейка за границы поля
-	if (nextX < 0 || nextX >= width || nextY < 0 || nextY >= height)
-		return false;
-	
-	// проверка на то, не врезалась ли змейка в стену
-	if (ar[nextY][nextX] == GameObject::WALL)
-		return false;
-
-	// проверка на то, не врезалась ли змейка сама в себя
-	snake.X = nextX;
-	snake.Y = nextY;
-	has_been_moved = true;
-	return true;
-}
-void spawn_apple(int** ar, int width, int height, const COORD& snake) {
-	// создание яблока в случайной позиции
-	int x, y;
-	do {
-		x = rand() % (width - 1);
-		y = rand() % (height - 1);
-	} while (ar[y][x] != HALL || (x == snake.X && y == snake.Y));
-
-	ar[y][x] = APPLE;
-
-	// отображение яблока на экране
-	COORD apple_position;
-	apple_position.X = x;
-	apple_position.Y = y;
-	HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
-	SetConsoleCursorPosition(h, apple_position);
-	SetConsoleTextAttribute(h, Color::RED);
-	cout << "o";
-}
-void save_score_to_file(int score) {
-	// сохранение счёта в файл
-	FILE* file;
-	int error_code = fopen_s(&file, "C:/Users/fantom44ik/Desktop/snake_save.txt", "a");
-
-	if (error_code == 0 && file != nullptr) {
-		string str = to_string(score) + "\n";
-		fputs(str.c_str(), file);
-		fclose(file);
-	}
-}
-void print_scores_from_file() {
-	// вывод результатов из файла
-	FILE* file;
-	int error_code = fopen_s(&file, "C:/Users/fantom44ik/Desktop/snake_save.txt", "r");
-
-	if (error_code != 0 || file == nullptr) {
-		cout << "\nError: unable to open save file.\n";
-		return;
-	}
-
-	char line[100];
-	int index = 1;
-	cout << "\n=== Previous results ===\n";
-	while (fgets(line, sizeof(line), file)) {
-		cout << index++ << ") Points: " << line;
-	}
-	cout << "========================\n";
-
-	fclose(file);
-}
-void clear_scores_file() {
-	// очистка файла с результатами
-	FILE* file;
-	int error_code = fopen_s(&file, "C:/Users/fantom44ik/Desktop/snake_save.txt", "w");
-	if (error_code == 0 && file != nullptr) {
-		fclose(file);
-	}
-	else {
-		cout << "\nError: unable to open save file.\n";
-	}
-}
-
-
+#include "Snake_lib.h"
 
 int main()
 {
@@ -426,4 +177,229 @@ int main()
 	// освобождение памяти
 	clear_2d_array(map, height);
 	Sleep(300);
+}
+
+void show_menu(bool& game_started) {
+	int choice; // переменная для выбора пункта меню
+
+	HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
+	system("title Snakek Menu"); // изменение заголовка консоли
+	CONSOLE_FONT_INFOEX font; // https://docs.microsoft.com/en-us/windows/console/console-font-infoex
+	font.cbSize = sizeof(font);
+	font.dwFontSize.Y = 25;
+	font.FontFamily = FF_DONTCARE;
+	font.FontWeight = FW_NORMAL;
+	wcscpy_s(font.FaceName, 9, L"Consolas");
+	SetCurrentConsoleFontEx(h, 0, &font);
+	SetConsoleTextAttribute(h, Color::WHITE);
+
+	do {
+		system("cls"); // очистка консоли
+		cout << "=====================\n";
+		cout << "  Welcome to snake!\n";
+		cout << "=====================\n";
+		cout << "1. Play\n";
+		cout << "2. Records\n";
+		cout << "3. Clear records\n";
+		cout << "4. Exit\n";
+		cout << "Choose an option: ";
+
+		cin >> choice;
+
+		// проверка на то, какой пункт меню был выбран
+		switch (choice) {
+		case 1:
+			// запускает игру заменой переменной game_started на true
+			cout << "Starting game...\n";
+			Sleep(1000);
+			system("cls");
+			game_started = true;
+			return; // выход из меню в игру
+		case 2:
+			// выводит результаты в консоль
+			system("cls");
+			print_scores_from_file(); // вывод результатов
+			Sleep(2000); // задержка 2 секунды
+			cout << "\n\nPress any key and you will be redirected to the main menu...\n";
+			_getch(); // ожидание нажатия клавиши
+			break; // возвращение в меню
+		case 3:
+			// очищает файл с результатами
+			system("cls");
+			int confirm;
+			cout << "Are you sure you want to clear the records? (1 - Yes, 0 - No): "; // подтверждение очистки файла
+			cin >> confirm;
+			if (confirm == 1) {
+				cout << "Clearing records...\n";
+				Sleep(1000);
+				clear_scores_file(); // очистка файла
+				cout << "Records cleared.\n";
+				Sleep(2000);
+			}
+			else {
+				cout << "Records not cleared.\n";
+				Sleep(2000);
+			}
+			break; // возвращение в меню
+		case 4:
+			cout << "Exiting game...\n";
+			Sleep(1000);
+			exit(0); // выход из программы
+		default:
+			// в том случае, если был введён некорректный пункт меню
+			cout << "Wrong choice. Try again.\n";
+			Sleep(2000);
+		}
+	} while (true); // бесконечный цикл, пока не выбрана команда "Exit"
+}
+void fill_2d_array(int** ar, int width, int height) {
+	// заполнение двумерного массива стенами и полем
+	for (int y = 0; y < width; ++y) {
+		for (int x = 0; x < height; ++x) {
+			if (y == 0 || y == width - 1 || x == 0 || x == height - 1) {
+				ar[y][x] = WALL;
+			}
+			else {
+				ar[y][x] = HALL;
+			}
+		}
+	}
+}
+void print_2d_array(int** ar, int width, int height, HANDLE h) {
+	// вывод двумерного массива на экран и задание цвета вместе с символом для стен
+	for (int y = 0; y < width; ++y) {
+		for (int x = 0; x < height; ++x) {
+			switch (ar[y][x]) {
+			case HALL:
+				cout << " ";
+				break;
+			case WALL:
+				SetConsoleTextAttribute(h, Color::WHITE);
+				cout << (char)178;
+				break;
+			case APPLE:
+				SetConsoleTextAttribute(h, Color::RED);
+				cout << "o";
+				break;
+			}
+		}
+		cout << "\n";
+	}
+}
+void clear_2d_array(int**& ar, int width) {
+	// освобождение памяти
+	for (int i = 0; i < width; ++i) {
+		delete[] ar[i];
+		ar[i] = nullptr;
+	}
+	delete[] ar;
+	ar = nullptr;
+}
+void update_direction_from_key(int code, bool& move_left, bool& move_right, bool& move_up, bool& move_down) {
+	// обновление направления движения в зависимости от нажатой клавиши
+	if ((code == Key::LEFT || code == Key::A) && !move_right) {
+		move_left = true;
+		move_right = move_up = move_down = false;
+	}
+	else if ((code == Key::RIGHT || code == Key::D) && !move_left) {
+		move_right = true;
+		move_left = move_up = move_down = false;
+	}
+	else if ((code == Key::UP || code == Key::W) && !move_down) {
+		move_up = true;
+		move_down = move_left = move_right = false;
+	}
+	else if ((code == Key::DOWN || code == Key::S) && !move_up) {
+		move_down = true;
+		move_up = move_left = move_right = false;
+	}
+}
+bool snake_move(int**& ar, int width, int height, bool& has_been_moved,
+	bool move_left, bool move_right, bool move_up, bool move_down, COORD& snake) {
+	// движение змейки 
+
+	// рассчёт координаты следующего движения
+	int nextX = snake.X;
+	int nextY = snake.Y;
+
+	// проверка на то, в какую сторону движется змейка
+	if (move_left) nextX--;
+	else if (move_right) nextX++;
+	else if (move_up) nextY--;
+	else if (move_down) nextY++;
+
+	// проверка на то, не вышла ли змейка за границы поля
+	if (nextX < 0 || nextX >= width || nextY < 0 || nextY >= height)
+		return false;
+
+	// проверка на то, не врезалась ли змейка в стену
+	if (ar[nextY][nextX] == GameObject::WALL)
+		return false;
+
+	// проверка на то, не врезалась ли змейка сама в себя
+	snake.X = nextX;
+	snake.Y = nextY;
+	has_been_moved = true;
+	return true;
+}
+void spawn_apple(int** ar, int width, int height, const COORD& snake) {
+	// создание яблока в случайной позиции
+	int x, y;
+	do {
+		x = rand() % (width - 1);
+		y = rand() % (height - 1);
+	} while (ar[y][x] != HALL || (x == snake.X && y == snake.Y));
+
+	ar[y][x] = APPLE;
+
+	// отображение яблока на экране
+	COORD apple_position;
+	apple_position.X = x;
+	apple_position.Y = y;
+	HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
+	SetConsoleCursorPosition(h, apple_position);
+	SetConsoleTextAttribute(h, Color::RED);
+	cout << "o";
+}
+void save_score_to_file(int score) {
+	// сохранение счёта в файл
+	FILE* file;
+	int error_code = fopen_s(&file, "snake_save.txt", "a");
+
+	if (error_code == 0 && file != nullptr) {
+		string str = to_string(score) + "\n";
+		fputs(str.c_str(), file);
+		fclose(file);
+	}
+}
+void print_scores_from_file() {
+	// вывод результатов из файла
+	FILE* file;
+	int error_code = fopen_s(&file, "snake_save.txt", "r");
+
+	if (error_code != 0 || file == nullptr) {
+		cout << "\nError: unable to open save file.\n";
+		return;
+	}
+
+	char line[100];
+	int index = 1;
+	cout << "\n=== Previous results ===\n";
+	while (fgets(line, sizeof(line), file)) {
+		cout << index++ << ") Points: " << line;
+	}
+	cout << "========================\n";
+
+	fclose(file);
+}
+void clear_scores_file() {
+	// очистка файла с результатами
+	FILE* file;
+	int error_code = fopen_s(&file, "snake_save.txt", "w");
+	if (error_code == 0 && file != nullptr) {
+		fclose(file);
+	}
+	else {
+		cout << "\nError: unable to open save file.\n";
+	}
 }
